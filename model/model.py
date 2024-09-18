@@ -13,9 +13,9 @@ class VQVAE(nn.Module):
 
   def forward(self, x):
     x = self.encoder(x)
-    x, quantize_losses = self.latent_space(x)
+    x, quantize_loss = self.latent_space(x)
     x = self.decoder(x)
-    return x, quantize_losses
+    return x, quantize_loss
 
 
 class Encoder(nn.Module):
@@ -23,12 +23,12 @@ class Encoder(nn.Module):
     super().__init__()
 
     self.encoder = nn.Sequential(
-      nn.Conv2d(in_channels=in_size, out_channels=hidden_size, stride=2, padding=1),
+      nn.Conv2d(in_channels=in_size, out_channels=hidden_size, kernel_size=4, stride=2, padding=1),
       nn.BatchNorm2d(hidden_size),
-      nn.Relu(),
-      nn.Conv2d(in_channels=hidden_size, out_channels=out_size),
+      nn.ReLU(),
+      nn.Conv2d(in_channels=hidden_size, out_channels=out_size, kernel_size=4),
       nn.BatchNorm2d(out_size),
-      nn.Relu(),
+      nn.ReLU(),
     )
 
   def forward(self, x):
@@ -54,16 +54,17 @@ class VQLatentSpace(nn.Module):
 
     # compute pairwise distance argmin of nearest embedding
     dist = torch.cdist(quant_input, self.embedding.weight[None, :].repeat((quant_input.size(0), 1, 1)))
-    min_encoding_idxs = torch.argmin(dist, dim=1)
+    min_encoding_idxs = torch.argmin(dist, dim=2)
 
     # select embedding weights
+    # FIXME: IndexError: index out of range in self
     quant_out = torch.index_select(self.embedding.weight, 0, min_encoding_idxs.view(-1))
     quant_input = quant_input.reshape((-1, quant_input.size(-1)))
 
     # compute losses
     commitment_loss = torch.mean((quant_out.detach() - quant_input) ** 2)
     codebook_loss = torch.mean((quant_out - quant_input.detach()) ** 2)
-    quantize_losses = codebook_loss + self.beta * commitment_loss
+    quantize_loss = codebook_loss + self.beta * commitment_loss
 
     # ensure straight-through gradient and reshape back to original
     quant_out = quant_input + (quant_out - quant_input).detach()
@@ -72,7 +73,7 @@ class VQLatentSpace(nn.Module):
 
     x = self.post_quant_conv(quant_out)
 
-    return x, quantize_losses
+    return x, quantize_loss
 
 
 class Decoder(nn.Module):
@@ -80,16 +81,12 @@ class Decoder(nn.Module):
     super().__init__()
 
     self.decoder = nn.Sequential(
-      nn.ConvTranspose2d(in_channels=in_size, out_channels=hidden_size, stride=2, padding=1),
+      nn.ConvTranspose2d(in_channels=in_size, out_channels=hidden_size, kernel_size=4, stride=2, padding=1),
       nn.BatchNorm2d(hidden_size),
       nn.ReLU(),
-      nn.ConvTranspose2d(in_channels=hidden_size, out_channels=out_size, stride=2, padding=1),
+      nn.ConvTranspose2d(in_channels=hidden_size, out_channels=out_size, kernel_size=4, stride=2, padding=1),
       nn.Tanh()
     )
 
   def forward(self, x):
     return self.decoder(x)
-
-
-if __name__ == "__main__":
-  pass
