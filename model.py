@@ -26,7 +26,7 @@ class Encoder(nn.Module):
       nn.Conv2d(in_channels=in_size, out_channels=hidden_size, kernel_size=4, stride=2, padding=1),
       nn.BatchNorm2d(hidden_size),
       nn.ReLU(),
-      nn.Conv2d(in_channels=hidden_size, out_channels=out_size, kernel_size=4),
+      nn.Conv2d(in_channels=hidden_size, out_channels=out_size, kernel_size=4, stride=2, padding=1),
       nn.BatchNorm2d(out_size),
       nn.ReLU(),
     )
@@ -57,7 +57,6 @@ class VQLatentSpace(nn.Module):
     min_encoding_idxs = torch.argmin(dist, dim=2)
 
     # select embedding weights
-    # FIXME: IndexError: index out of range in self
     quant_out = torch.index_select(self.embedding.weight, 0, min_encoding_idxs.view(-1))
     quant_input = quant_input.reshape((-1, quant_input.size(-1)))
 
@@ -90,3 +89,10 @@ class Decoder(nn.Module):
 
   def forward(self, x):
     return self.decoder(x)
+
+
+if __name__ == "__main__":
+  model = VQVAE(3, 3)
+  t = torch.ones((1, 3, 224, 224))
+  out, loss = model(t)
+  print(out.shape)
